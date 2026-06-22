@@ -1,0 +1,354 @@
+# =====================================================
+# INSTALL LIBRARY
+# =====================================================
+
+!pip install transformers datasets accelerate torch scikit-learn -q
+
+# =====================================================
+# IMPORT LIBRARY
+# =====================================================
+
+import pandas as pd
+import numpy as np
+import torch
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    classification_report,
+    confusion_matrix
+)
+
+from transformers import (
+    AutoTokenizer,
+    AutoModelForSequenceClassification,
+    Trainer,
+    TrainingArguments
+)
+
+# =====================================================
+# LOAD DATASET
+# =====================================================
+
+df = pd.read_csv(
+    "/content/sample_data/combined_dataset.csv"
+)
+
+print("Jumlah Data :", len(df))
+
+# =====================================================
+# PILIH KOLOM
+# =====================================================
+
+df = df[['clean_text','encoded_label']]
+
+df.columns = ['text','label']
+
+df['label'] = df['label'].astype(int)
+
+# =====================================================
+# TRAIN TEST SPLIT
+# =====================================================
+
+train_texts, test_texts, train_labels, test_labels = train_test_split(
+    df['text'],
+    df['label'],
+    test_size=0.2,
+    random_state=42,
+    stratify=df['label']
+)
+
+print("Train :", len(train_texts))
+print("Test  :", len(test_texts))
+
+# =====================================================
+# LOAD TOKENIZER
+# =====================================================
+
+MODEL_NAME = "indobenchmark/indobert-base-p1"
+
+tokenizer = AutoTokenizer.from_pretrained(
+    MODEL_NAME
+)
+
+# =====================================================
+# TOKENIZATION
+# =====================================================
+
+train_encodings = tokenizer(
+    train_texts.tolist(),
+    truncation=True,
+    padding=True,
+    max_length=128
+)
+
+test_encodings = tokenizer(
+    test_texts.tolist(),
+    truncation=True,
+    padding=True,
+    max_length=128
+)
+
+# =====================================================
+# DATASET CLASS
+# =====================================================
+
+class ToxicDataset(torch.utils.data.Dataset):
+
+    def __init__(self, encodings, labels):
+        self.encodings = encodings
+        self.labels = labels.tolist()
+
+    def __getitem__(self, idx):
+
+        item = {
+            key: torch.tensor(val[idx])
+            for key, val in self.encodings.items()
+        }
+
+        item["labels"] = torch.tensor(
+            self.labels[idx]
+        )
+
+        return item
+
+    def __len__(self):
+        return len(self.labels)
+
+# =====================================================
+# DATASET OBJECT
+# =====================================================
+
+train_dataset = ToxicDataset(
+    train_encodings,
+    train_labels
+)
+
+test_dataset = ToxicDataset(
+    test_encodings,
+    test_labels
+)
+
+# =====================================================
+# LOAD MODEL
+# =====================================================
+
+model = AutoModelForSequenceClassification.from_pretrained(
+    MODEL_NAME,
+    num_labels=2
+)
+
+# =====================================================
+# METRIC
+# =====================================================
+
+def compute_metrics(eval_pred):
+
+    logits, labels = eval_pred
+
+    preds = np.argmax(
+        logits,
+        axis=-1
+    )
+
+    acc = accuracy_score(
+        labels,
+        preds
+    )
+
+    prec = precision_score(
+        labels,
+        preds,
+        average='weighted'
+    )
+
+    rec = recall_score(
+        labels,
+        preds,
+        average='weighted'
+    )
+
+    f1 = f1_score(
+        labels,
+        preds,
+        average='weighted'
+    )
+
+    return {
+        'accuracy': acc,
+        'precision': prec,
+        'recall': rec,
+        'f1': f1
+    }
+
+# =====================================================
+# TRAINING ARGUMENT
+# =====================================================
+
+training_args = TrainingArguments(
+    output_dir="./results",
+
+    num_train_epochs=3,
+
+    per_device_train_batch_size=16,
+
+    per_device_eval_batch_size=16,
+
+    learning_rate=2e-5,
+
+    eval_strategy="epoch",
+
+    save_strategy="epoch",
+
+    load_best_model_at_end=True,
+
+    report_to="none"
+)
+
+# =====================================================
+# TRAINER
+# =====================================================
+
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=train_dataset,
+    eval_dataset=test_dataset,
+    compute_metrics=compute_metrics
+)
+
+# =====================================================
+# TRAIN
+# =====================================================
+
+trainer.train()
+
+# =====================================================
+# EVALUASI
+# =====================================================
+
+results = trainer.evaluate()
+
+print(results)
+
+# =====================================================
+# PREDIKSI
+# =====================================================
+
+predictions = trainer.predict(
+    test_dataset
+)
+
+preds = np.argmax(
+    predictions.predictions,
+    axis=1
+)
+
+# =====================================================
+# METRIK
+# =====================================================
+
+acc = accuracy_score(
+    test_labels,
+    preds
+)
+
+prec = precision_score(
+    test_labels,
+    preds,
+    average='weighted'
+)
+
+rec = recall_score(
+    test_labels,
+    preds,
+    average='weighted'
+)
+
+f1 = f1_score(
+    test_labels,
+    preds,
+    average='weighted'
+)
+
+print("\n===== HASIL =====")
+
+print(
+    f"Accuracy  : {acc:.4f}"
+)
+
+print(
+    f"Precision : {prec:.4f}"
+)
+
+print(
+    f"Recall    : {rec:.4f}"
+)
+
+print(
+    f"F1 Score  : {f1:.4f}"
+)
+
+# =====================================================
+# CLASSIFICATION REPORT
+# =====================================================
+
+print(
+    classification_report(
+        test_labels,
+        preds
+    )
+)
+
+# =====================================================
+# CONFUSION MATRIX
+# =====================================================
+
+cm = confusion_matrix(
+    test_labels,
+    preds
+)
+
+print(cm)
+
+# =====================================================
+# TEST KALIMAT BARU
+# =====================================================
+
+def predict_comment(text):
+
+    inputs = tokenizer(
+        text,
+        return_tensors="pt",
+        truncation=True,
+        padding=True,
+        max_length=128
+    )
+
+    with torch.no_grad():
+
+        outputs = model(
+            **inputs
+        )
+
+    pred = torch.argmax(
+        outputs.logits,
+        dim=1
+    ).item()
+
+    return pred
+
+# =====================================================
+# CONTOH
+# =====================================================
+
+kalimat = "dasar goblok banget sih"
+hasil = predict_comment(
+    kalimat
+)
+
+print("\nKalimat :", kalimat)
+print("Prediksi :", hasil)
