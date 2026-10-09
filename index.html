@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101827" />
+  <meta name="description" content="Demo augmented reality berbasis marker Hiro dengan model 3D bebek." />
+  <title>UTS Augmented Reality - Marker Based</title>
+
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js"></script>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    .instructions {
+      position: fixed;
+      z-index: 10;
+      top: max(16px, env(safe-area-inset-top));
+      left: 50%;
+      width: min(92vw, 480px);
+      padding: 16px 18px;
+      transform: translateX(-50%);
+      color: #f8fafc;
+      background: rgb(15 23 42 / 88%);
+      border: 1px solid rgb(148 163 184 / 35%);
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgb(0 0 0 / 25%);
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 180ms ease, visibility 180ms ease, padding 180ms ease, width 180ms ease;
+    }
+
+    .instructions.is-hidden {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .tracking-hint {
+      position: fixed;
+      z-index: 5;
+      right: max(16px, env(safe-area-inset-right));
+      bottom: max(22px, env(safe-area-inset-bottom));
+      left: max(16px, env(safe-area-inset-left));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      color: #fff;
+      font-size: clamp(0.88rem, 2.5vw, 1.05rem);
+      font-weight: 700;
+      line-height: 1.45;
+      text-align: center;
+      text-shadow: 0 2px 5px #000, 0 0 12px #000;
+      pointer-events: none;
+    }
+
+    .tracking-hint p {
+      max-width: 760px;
+      margin: 0;
+    }
+
+    .tracking-indicator {
+      width: 11px;
+      height: 11px;
+      flex: 0 0 11px;
+      border-radius: 50%;
+      background: #fbbf24;
+      box-shadow: 0 0 12px rgb(251 191 36 / 85%);
+    }
+
+    .tracking-hint.is-found .tracking-indicator {
+      background: #4ade80;
+      box-shadow: 0 0 14px rgb(74 222 128 / 90%);
+    }
+
+    .tracking-hint.is-error .tracking-indicator {
+      background: #fb7185;
+      box-shadow: 0 0 14px rgb(251 113 133 / 90%);
+    }
+
+    .instructions h1 {
+      margin: 0 0 6px;
+      font-size: 1.1rem;
+      line-height: 1.3;
+    }
+
+    .instructions p {
+      margin: 0;
+      color: #cbd5e1;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .control-button,
+    .marker-link {
+      display: inline-flex;
+      min-height: 40px;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 12px;
+      border: 0;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      pointer-events: auto;
+    }
+
+    .control-button {
+      color: #f8fafc;
+      background: #334155;
+      cursor: pointer;
+    }
+
+    .marker-link {
+      color: #082f49;
+      background: #7dd3fc;
+      text-decoration: none;
+    }
+
+    #status {
+      margin-top: 10px;
+      color: #7dd3fc;
+      font-weight: 600;
+    }
+
+    a-scene {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+    }
+
+    .a-enter-vr {
+      display: none !important;
+    }
+
+    :fullscreen {
+      background: transparent;
+    }
+
+    :fullscreen .instructions {
+      top: max(12px, env(safe-area-inset-top));
+      width: min(92vw, 480px);
+    }
+
+    @media (max-width: 480px) {
+      .instructions {
+        top: max(10px, env(safe-area-inset-top));
+        padding: 12px 14px;
+      }
+
+      .instructions h1 {
+        font-size: 1rem;
+      }
+
+      .instructions p {
+        font-size: 0.82rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="instructions" id="instructions" aria-live="polite">
+    <h1>Augmented Reality — Marker Hiro</h1>
+    <p>Arahkan kamera ke marker Hiro. Izinkan akses kamera saat diminta.</p>
+    <p id="status" role="status">Memuat model 3D...</p>
+    <div class="controls">
+      <button class="control-button" id="fullscreen-button" type="button" aria-pressed="false">
+        Perbesar layar
+      </button>
+      <a class="marker-link" href="marker/Marker.jpg" download="Marker-Hiro.jpg">
+        Unduh marker Hiro
+      </a>
+    </div>
+  </main>
+
+  <div class="tracking-hint" id="tracking-hint" role="status" aria-live="polite">
+    <span class="tracking-indicator" aria-hidden="true"></span>
+    <p id="tracking-message">Mencari marker — arahkan kamera hampir tegak lurus, tampilkan seluruh marker, dan mulai dari jarak sekitar 30–60 cm.</p>
+  </div>
+
+  <a-scene
+    embedded
+    vr-mode-ui="enabled: false"
+    renderer="logarithmicDepthBuffer: true;"
+    arjs="sourceType: webcam; debugUIEnabled: false;">
+    <a-assets timeout="15000">
+      <a-asset-item id="duck-model" src="models/Duck.glb"></a-asset-item>
+    </a-assets>
+
+    <a-marker id="hiro-marker" preset="hiro">
+      <a-entity
+        id="duck-pivot"
+        animation="property: rotation; to: 0 0 360; loop: true; dur: 8000">
+        <a-entity
+          id="duck"
+          gltf-model="#duck-model"
+          position="0 0 0"
+          rotation="-90 0 0"
+          scale="0.5 0.5 0.5">
+        </a-entity>
+      </a-entity>
+    </a-marker>
+
+    <a-entity camera></a-entity>
+  </a-scene>
+
+  <script>
+    const status = document.querySelector("#status");
+    const scene = document.querySelector("a-scene");
+    const marker = document.querySelector("#hiro-marker");
+    const duck = document.querySelector("#duck");
+    const fullscreenButton = document.querySelector("#fullscreen-button");
+    const instructions = document.querySelector("#instructions");
+    const trackingHint = document.querySelector("#tracking-hint");
+    const trackingMessage = document.querySelector("#tracking-message");
+    let cameraFailed = false;
+    let modelFailed = false;
+    let hideInstructionsTimer;
+
+    const setTrackingHint = (message, state = "searching") => {
+      trackingMessage.textContent = message;
+      trackingHint.classList.toggle("is-found", state === "found");
+      trackingHint.classList.toggle("is-error", state === "error");
+    };
+
+    const hideInstructions = () => {
+      instructions.classList.add("is-hidden");
+      instructions.setAttribute("aria-hidden", "true");
+    };
+
+    const showInstructions = () => {
+      instructions.classList.remove("is-hidden");
+      instructions.setAttribute("aria-hidden", "false");
+      window.clearTimeout(hideInstructionsTimer);
+      hideInstructionsTimer = window.setTimeout(hideInstructions, 3000);
+    };
+
+    document.addEventListener("pointerdown", showInstructions);
+    showInstructions();
+
+    const updateFullscreenButton = () => {
+      const isFullscreen = document.fullscreenElement === document.documentElement;
+      fullscreenButton.textContent = isFullscreen ? "Keluar layar penuh" : "Perbesar layar";
+      fullscreenButton.setAttribute("aria-pressed", String(isFullscreen));
+    };
+
+    fullscreenButton.addEventListener("click", async () => {
+      try {
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+        } else {
+          await document.documentElement.requestFullscreen();
+        }
+      } catch (error) {
+        console.error("Tidak dapat mengubah mode layar penuh:", error);
+        status.textContent = "Mode layar penuh tidak tersedia di browser ini.";
+      }
+    });
+
+    document.addEventListener("fullscreenchange", () => {
+      updateFullscreenButton();
+      requestAnimationFrame(() => {
+        if (scene.hasLoaded) {
+          scene.resize();
+        }
+      });
+    });
+
+    scene.addEventListener("camera-init", () => {
+      cameraFailed = false;
+      setTrackingHint(
+        "Kamera aktif — arahkan hampir tegak lurus ke marker, tampilkan seluruh bingkai, mulai dari jarak sekitar 30–60 cm."
+      );
+      if (!modelFailed) {
+        status.textContent = "Kamera aktif. Arahkan kamera ke marker Hiro.";
+      }
+    });
+
+    scene.addEventListener("camera-error", (event) => {
+      cameraFailed = true;
+      console.error("Kamera AR gagal dimulai:", event.detail);
+      setTrackingHint("Kamera tidak aktif — izinkan akses kamera di browser dan tutup aplikasi lain yang menggunakannya.", "error");
+      status.textContent = "Kamera tidak dapat dibuka. Izinkan akses kamera di browser dan tutup aplikasi lain yang menggunakannya.";
+    });
+
+    marker.addEventListener("markerFound", () => {
+      setTrackingHint("Marker terdeteksi — sudut sudah terbaca. Tahan kamera tetap stabil agar objek 3D muncul.", "found");
+      if (!cameraFailed && !modelFailed) {
+        status.textContent = "Marker terdeteksi — model 3D ditampilkan.";
+      }
+    });
+    marker.addEventListener("markerLost", () => {
+      setTrackingHint("Marker terlepas — arahkan kamera hampir tegak lurus, tampilkan seluruh marker, dan pastikan cukup terang.");
+      if (!cameraFailed && !modelFailed) {
+        status.textContent = "Marker belum terlihat. Arahkan kamera ke marker Hiro.";
+      }
+    });
+
+    duck.addEventListener("model-loaded", () => {
+      const model = duck.getObject3D("mesh");
+      if (model) {
+        const centeredModel = model.clone(true);
+        centeredModel.position.set(0, 0, 0);
+        centeredModel.rotation.copy(duck.object3D.rotation);
+        centeredModel.scale.set(1, 1, 1);
+        centeredModel.updateMatrixWorld(true);
+
+        const bounds = new THREE.Box3().setFromObject(centeredModel);
+        const center = bounds.getCenter(new THREE.Vector3());
+        const scale = duck.object3D.scale;
+        duck.setAttribute("position", {
+          x: -center.x * scale.x,
+          y: -bounds.min.y * scale.y,
+          z: -center.z * scale.z
+        });
+      }
+
+      if (!cameraFailed) {
+        status.textContent = "Model siap. Izinkan kamera jika diminta, lalu arahkan ke marker Hiro.";
+      }
+    });
+
+    duck.addEventListener("model-error", () => {
+      modelFailed = true;
+      setTrackingHint("Marker dapat dilacak, tetapi model 3D gagal dimuat. Periksa koneksi dan file model.", "error");
+      status.textContent = "Model gagal dimuat. Periksa koneksi dan file models/Duck.glb.";
+    });
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setTrackingHint("Browser tidak menyediakan akses kamera. Buka halaman melalui localhost atau HTTPS.", "error");
+      status.textContent = "Browser tidak menyediakan akses kamera. Buka halaman melalui localhost atau HTTPS.";
+    }
+  </script>
+</body>
+</html>
