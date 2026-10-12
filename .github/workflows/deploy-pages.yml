@@ -28,8 +28,9 @@ jobs:
       - name: Prepare AR site
         run: |
           mkdir -p _site
-          cp models/index.html _site/index.html
-          cp -R marker models _site/
+          cp -R uts-ar-marker _site/
+          cp uts-ar-marker/index.html _site/index.html
+          cp -R uts-ar-marker/marker uts-ar-marker/models _site/
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
